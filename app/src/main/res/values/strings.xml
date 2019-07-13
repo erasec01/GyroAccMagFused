@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">GyroAccMagFused</string>
+    <string name="gyroValX">Gyro X:</string>
+    <string name="gyroValY">Gyro Y:</string>
+    <string name="gyroValZ">Gyro Z:</string>
+    <string name="magAccValX">MagAcc X:</string>
+    <string name="magAccValY">MagAcc Y:</string>
+    <string name="magAccValZ">MagAcc Z:</string>
+
+
+
+    <string name="value_format">%1$.2f</string>
+</resources>
