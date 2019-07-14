@@ -258,27 +258,24 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         if(sensorType == Sensor.TYPE_GYROSCOPE) {
 
-            //following code is taken and adapted from android documentation "Sensor event Gyroscope"
+            //following code is taken and adapted from android documentation:
+            //https://developer.android.com/reference/android/hardware/SensorEvent
+
             if (timestamp != 0) {
 
+                //calculate time lapsed from consecutive sampling and convert from nanosecond to second
                 final float dT = (event.timestamp - timestamp) * NANOTOSEC;
 
+                //To create quaternion we need:
+                //  -Magnitude of rotation vector normalized
+                //  -Angle of Rotation vector
 
-
-
-
-
-                //calculate time lapsed from consecutive sampling and convert from nanosecond to second
-
-
-                //calculate the resultant vector in 3d space
-
+                //Calculate the resultant magnitude vector in 3d space
                 float resultantGyroVector = (float) Math.sqrt(mGyroscopeData[0] * mGyroscopeData[0] +
                         mGyroscopeData[1] * mGyroscopeData[1] +
                         mGyroscopeData[2] * mGyroscopeData[2]);
 
-                //normalization of rotation vector
-
+                //Normalization of rotation vector
                 if (resultantGyroVector > EPSILON) {
 
                     normGyroVector[0] = mGyroscopeData[0] / resultantGyroVector;
@@ -287,49 +284,62 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 }
 
-                //create quaternion
+                //Calculate rotation angle
 
                 float angleComputed = resultantGyroVector * dT / 2.0f;
                 float sinAngleComputed = (float) Math.sin(angleComputed);
                 float cosAngleComputed = (float) Math.cos(angleComputed);
 
-                //four quaternion's elements:
+                /*
+                Create quaternion. By definition a quaternion is composed of 4 elements:
+                  -Rotation along X axis
+                  -Rotation along Y axis
+                  -Rotation along Z axis
+                  -Magnitude of rotation
+                */
                 deltaRotationVector[0] = sinAngleComputed * normGyroVector[0];
                 deltaRotationVector[1] = sinAngleComputed * normGyroVector[1];
                 deltaRotationVector[2] = sinAngleComputed * normGyroVector[2];
                 deltaRotationVector[3] = cosAngleComputed;
 
 
-                //calculate rotation matrix from quaternion
-
+                //From quaternion above calculate the corresponding rotation matrix
                 SensorManager.getRotationMatrixFromVector(deltaRotationMatrix, deltaRotationVector);
 
-
-                // align gyro with inertial frame reference
-
-
-
+                /*
+                /At this point the gyro data are referenced to sensor body system  that is different
+                 from inertial reference system in which magAccPosition data is computed.
+                 We need to align gyro data with magAccData. To do so we multiply gyroRotationMatrix with
+                 magAccRotationMatrix that is already aligned with inertial reference system.
+                 In this way gyroRotationMatrix it will be aligned with inertial reference system as well
+                 This step is done only the first time gyro event occurs and only if magAccPosition is available
+                */
                     if (initState && magAccPosOk) {
 
-
-                            gyroRotationMatrix = matrixMultiplication(gyroRotationMatrix, magAccRotationMatrix);
-
-                            initState = false;
+                        gyroRotationMatrix = matrixMultiplication(gyroRotationMatrix, magAccRotationMatrix);
+                        initState = false;
                     }
 
 
 
-
-
-                //update gyroRotationMatrix with actual gyro value rotation. Here integration is performed
-
+                /*
+                Update gyroRotationMatrix with actual gyro value rotation. Here is where integration
+                is performed. gyroRotationMatrix is updated with current rotation values and aligned
+                with inertial reference system
+                */
                 gyroRotationMatrix = matrixMultiplication(gyroRotationMatrix, deltaRotationMatrix);
 
-                // get gyro position from Rotation matrix. Here Gyro position is affected by Drift
+                /*
+                Get position from gyro rotation matrix using android's method getOrientation()
+                (Here gyro position is affected by drift). The calculated position is used in the
+                final fused position
+                */
                 SensorManager.getOrientation(gyroRotationMatrix, gyroPosition);
 
 
-
+                /*
+                write in textview only if this class is used as stand alone APP
+                */
                 mTextgyroX.setText(getResources().getString(
                         R.string.value_format, gyroPosition[0]));
 
@@ -347,18 +357,29 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             timestamp = event.timestamp;
 
 
-            //calculate fused position and apply complementary filter --> if filter coeff = 1 Gyro values wins,  elsewhere MagAcc wins
+            /*
+            Calculate fused position and apply complementary filter
+            --> if filter_coeff is near 1 Gyro values wins, if is near 0 magAcc wins
+            */
             fusedPosition[0] = filter_coeff*gyroPosition[0] + (1.0f-filter_coeff)*magAccPosition[0];
             fusedPosition[1] = filter_coeff*gyroPosition[1] + (1.0f-filter_coeff)*magAccPosition[1];
             fusedPosition[2] = filter_coeff*gyroPosition[2] + (1.0f-filter_coeff)*magAccPosition[2];
 
 
-            // Until here fused position is affected by drift generated by Gyro. To eliminate drift we shall continue to follow value provided by magAcc
-            //to do so we update gyroRotationMatrix with new rotation matrix calculated by actual fused position. In this way the resultant gyroRotationMatrix
-            // contains "rotation instructions" in order to move new Gyro position affected by drift versus magAcc position that is without drift
+            /*
+                Until here fused position is affected by drift generated by gyro.
+                To eliminate drift, gyro should continue to follow the value provided by magAcc that
+                is without drift.
+                To do so we update gyroRotationMatrix with new rotation matrix calculated by
+                actual fused position. In this way the resultant gyroRotationMatrix
+                contains "rotation instructions" in order to move new gyro position affected by drift
+                versus magAcc position that is without drift
+            */
+            gyroRotationMatrix = getRotationMatrixFromPosition(fusedPosition);
 
-            gyroRotationMatrix = getRotationMatrixFromOrientation(fusedPosition);
-
+            /*
+                Write in textview only if this class is used as stand alone APP
+            */
             mTextFusedX.setText(getResources().getString(
                     R.string.value_format, fusedPosition[0]));
 
@@ -369,21 +390,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     R.string.value_format, fusedPosition[2]));
 
         }
-
-
-
-
-
-
-        
-
-
-
     }
 
-    //this method calculate the Rotation Matrix corresponding to a  given position passed by argument
+    /**
+     * This method calculate the Rotation Matrix corresponding to a  given position passed by argument
+     *
+     * @param o The position from which Rotation matrix is calculated
+     * @return  <code>float[] resultMatrix</code> The rotation matrix corresponding to position passed to the method
 
-    private float[] getRotationMatrixFromOrientation(float[] o) {
+    */
+    private float[] getRotationMatrixFromPosition(float[] o) {
         float[] xM = new float[9];
         float[] yM = new float[9];
         float[] zM = new float[9];
@@ -416,7 +432,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         return resultMatrix;
     }
 
-    //this method performs matrix multiplication, it should be re-emplemented using Strassen algorithm in order to get better performance
+    /**
+     * This method performs matrix multiplication, it should be re-emplemented using
+     * Strassen algorithm in order to get better performance
+     *
+     * @param A Matrix to be multiplied with B
+     * @param B Matrix to be multiplied with A
+     * @return <code>float[]</code> The resulting matrix from A*B multiplication
+
+     */
     private float[] matrixMultiplication(float[] A, float[] B) {
         float[] result = new float[9];
 
@@ -435,7 +459,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         return result;
     }
 
-    //This method calculates 3x3 identity matrix
+    /**
+     * This method calculates 3x3 identity matrix
+     *
+     * @param m The matrix to be converted into identity matrix
+     */
 
     private void getIdentityMatrix(float[] m ){
 
