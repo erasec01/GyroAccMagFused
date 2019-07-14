@@ -6,8 +6,9 @@
     <string name="magAccValX">MagAcc X:</string>
     <string name="magAccValY">MagAcc Y:</string>
     <string name="magAccValZ">MagAcc Z:</string>
-
-
+    <string name="fusedValueX">Fused X:</string>
+    <string name="fusedValueY">Fused Y:</string>
+    <string name="fusedValueZ">Fused Z:</string>
 
     <string name="value_format">%1$.2f</string>
 </resources>

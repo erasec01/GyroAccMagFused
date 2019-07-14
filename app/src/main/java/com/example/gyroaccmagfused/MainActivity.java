@@ -27,6 +27,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private TextView mTextMagAccX;
     private TextView mTextMagAccY;
     private TextView mTextMagAccZ;
+    private TextView mTextFusedX;
+    private TextView mTextFusedY;
+    private TextView mTextFusedZ;
 
     private SensorManager mSensorManager;
     private Sensor mSensorGyro;
@@ -63,9 +66,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
     private float[] gyroPosition = new float[3];
+    private float[] fusedPosition = new float[3];
+    private boolean initState = true;
+
+    private float filter_coeff = 0.98f;
 
 
-
+    // test variable
+    private int posCountTest = 0;
+    private int rotMatTest = 0;
+    private boolean magAccPosOk = false;
 
 
     @Override
@@ -76,10 +86,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         getIdentityMatrix(gyroRotationMatrix);
 
-            if(magAccPosition[0]== 0.0f || magAccPosition[1] == 0.0f || magAccPosition[2] ==0.0f ){
 
-                int stop = 0 ;
-            }
 
 
         mTextgyroX = (TextView)findViewById(R.id.gyroX);
@@ -88,11 +95,21 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mTextMagAccX = (TextView)findViewById(R.id.magAccX);
         mTextMagAccY = (TextView)findViewById(R.id.magAccY);
         mTextMagAccZ = (TextView)findViewById(R.id.magAccZ);
+        mTextFusedX = (TextView)findViewById(R.id.fusedX);
+        mTextFusedY = (TextView)findViewById(R.id.fusedY);
+        mTextFusedZ = (TextView)findViewById(R.id.fusedZ);
+
+
 
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mSensorGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         mSensorAcc = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mSensorMag = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+
+
+
+
+
 
     }
 
@@ -155,6 +172,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         if(rotationOk) {
             magAccPosition = SensorManager.getOrientation(magAccRotationMatrix, magAccPosition);
+            magAccPosOk = true;
+
         }
 
         mTextMagAccX.setText(getResources().getString(
@@ -170,6 +189,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
         //here only if sensor is gyro, this check is needed for timestamp consistency
+
+
         if(sensorType == Sensor.TYPE_GYROSCOPE) {
 
             if (timestamp != 0) {
@@ -217,42 +238,64 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 SensorManager.getRotationMatrixFromVector(deltaRotationMatrix, deltaRotationVector);
 
-                gyroRotationMatrix = matrixMultiplication(gyroRotationMatrix, deltaRotationMatrix);
-
-                //align with inertial frame reference
-
-                if(magAccPosition[0]!= 0.0f || magAccPosition[1] != 0.0f || magAccPosition[2] !=0.0f ) {
-
-                    boolean rotOk = SensorManager.getRotationMatrix(actualRotationReference, null, mAccelerometerData, mMagnetometerData);
-                    boolean re = true;
-
-                    if (rotOk) {
-                        gyroRotationReferenced = matrixMultiplication(gyroRotationMatrix, actualRotationReference);
-                        SensorManager.getOrientation(gyroRotationReferenced, gyroPosition);
-
-                        //SensorManager.getOrientation(gyroRotationMatrix, gyroPosition);
+                rotMatTest++;
+                // //align gyro with inertial frame reference
 
 
-                        mTextgyroX.setText(getResources().getString(
-                                R.string.value_format, gyroPosition[0]));
 
-                        mTextgyroY.setText(getResources().getString(
-                                R.string.value_format, gyroPosition[1]));
+                    if (initState && magAccPosOk) {
 
-                        mTextgyroZ.setText(getResources().getString(
-                                R.string.value_format, gyroPosition[2]));
+
+                            gyroRotationMatrix = matrixMultiplication(gyroRotationMatrix, magAccRotationMatrix);
+
+                            initState = false;
                     }
 
-                }
 
 
 
+
+                //update gyroRotationMatrix with actual rotation. Here integration is performed
+
+                gyroRotationMatrix = matrixMultiplication(gyroRotationMatrix, deltaRotationMatrix);
+
+                // get gyro position from Rotation matrix
+                SensorManager.getOrientation(gyroRotationMatrix, gyroPosition);
+
+
+
+                mTextgyroX.setText(getResources().getString(
+                        R.string.value_format, gyroPosition[0]));
+
+                mTextgyroY.setText(getResources().getString(
+                        R.string.value_format, gyroPosition[1]));
+
+                mTextgyroZ.setText(getResources().getString(
+                        R.string.value_format, gyroPosition[2]));
 
 
 
             }
 
+            //update timestamp
             timestamp = event.timestamp;
+
+
+
+            fusedPosition[0] = filter_coeff*gyroPosition[0] + (1.0f-filter_coeff)*magAccPosition[0];
+            fusedPosition[1] = filter_coeff*gyroPosition[1] + (1.0f-filter_coeff)*magAccPosition[1];
+            fusedPosition[2] = filter_coeff*gyroPosition[2] + (1.0f-filter_coeff)*magAccPosition[2];
+
+            gyroRotationMatrix = getRotationMatrixFromOrientation(fusedPosition);
+
+            mTextFusedX.setText(getResources().getString(
+                    R.string.value_format, fusedPosition[0]));
+
+            mTextFusedY.setText(getResources().getString(
+                    R.string.value_format, fusedPosition[1]));
+
+            mTextFusedZ.setText(getResources().getString(
+                    R.string.value_format, fusedPosition[2]));
 
         }
 
@@ -288,6 +331,40 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
 
+    }
+
+
+    private float[] getRotationMatrixFromOrientation(float[] o) {
+        float[] xM = new float[9];
+        float[] yM = new float[9];
+        float[] zM = new float[9];
+
+        float sinX = (float)Math.sin(o[1]);
+        float cosX = (float)Math.cos(o[1]);
+        float sinY = (float)Math.sin(o[2]);
+        float cosY = (float)Math.cos(o[2]);
+        float sinZ = (float)Math.sin(o[0]);
+        float cosZ = (float)Math.cos(o[0]);
+
+        // rotation about x-axis (pitch)
+        xM[0] = 1.0f; xM[1] = 0.0f; xM[2] = 0.0f;
+        xM[3] = 0.0f; xM[4] = cosX; xM[5] = sinX;
+        xM[6] = 0.0f; xM[7] = -sinX; xM[8] = cosX;
+
+        // rotation about y-axis (roll)
+        yM[0] = cosY; yM[1] = 0.0f; yM[2] = sinY;
+        yM[3] = 0.0f; yM[4] = 1.0f; yM[5] = 0.0f;
+        yM[6] = -sinY; yM[7] = 0.0f; yM[8] = cosY;
+
+        // rotation about z-axis (azimuth)
+        zM[0] = cosZ; zM[1] = sinZ; zM[2] = 0.0f;
+        zM[3] = -sinZ; zM[4] = cosZ; zM[5] = 0.0f;
+        zM[6] = 0.0f; zM[7] = 0.0f; zM[8] = 1.0f;
+
+        // rotation order is y, x, z (roll, pitch, azimuth)
+        float[] resultMatrix = matrixMultiplication(xM, yM);
+        resultMatrix = matrixMultiplication(zM, resultMatrix);
+        return resultMatrix;
     }
 
 
