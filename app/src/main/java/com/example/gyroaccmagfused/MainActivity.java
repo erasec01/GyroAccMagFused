@@ -4,7 +4,7 @@
  sensor fusion and complementary filter approach
  The algorithm steps are as follows:
 
-    calculate device's position using magnetometer and accelerometer data using android's
+    Calculate device's position using magnetometer and accelerometer data using android's
     SensorManager method getOrientation()
 
 
@@ -48,12 +48,16 @@ import static android.util.Half.EPSILON;
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
 
+    /**
+     * This constant is used to decide when Rotation vector is big enough to start computing quaternion
+     */
     public static final float EPSILON = 0.000000001f;
 
 
-
-
-   private TextView mTextgyroX;
+    /**
+     * define Text view used as data control. Use these only when class is in main activity
+     */
+    private TextView mTextgyroX;
     private TextView mTextgyroY;
     private TextView mTextgyroZ;
     private TextView mTextMagAccX;
@@ -63,59 +67,78 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private TextView mTextFusedY;
     private TextView mTextFusedZ;
 
+
     private SensorManager mSensorManager;
     private Sensor mSensorGyro;
     private Sensor mSensorAcc;
     private Sensor mSensorMag;
 
-    //nanosecond
+    /**
+     * Constant to perform conversion from nanosecond to second
+     */
+
     private static final float NANOTOSEC = 1.0f/1000000000.0f;
+
+    /**
+     * This timestamp is used to calculate integration time
+     */
 
     private float timestamp;
 
 
 
-    //matrix & vector:
+    /**
+     * Matrix and Vectors definition
+     * mGyroscopeData, mAccelerometerData, mMagnetometerData = raw data from sensors
+     * magAccPosition = position computed from accelerometer and magnetometer
+     * gyroPosition = position computed from gyroscope
+     * normGyroVector = Orientation vector normalized
+     * deltaRotationVector = quaternion vector
+     * deltaRotationMatrix = Rotation matrix calculated from quaternion
+     * magAccRotationMatrix = Rotation matrix for magnetometer and accelerometer data
+     * gyroRotationMatrix = Actual Rotation matrix for gyro contains drift corrections
+     **/
+
     private float[] mGyroscopeData = new float[3];
     private float[] mAccelerometerData = new float[3];
     private float[] mMagnetometerData = new float[3];
     private float[] magAccPosition = new float[3];
-
-
-
-
+    private float[] gyroPosition = new float[3];
+    private float[] fusedPosition = new float[3];
     private float[] normGyroVector = new float[3];
-
-
-
     private float[] deltaRotationVector = new float[4];
     private float[] deltaRotationMatrix = new float[9];
     private float[] gyroRotationMatrix = new float[9];
     private float[] magAccRotationMatrix = new float[9];
-    private float[] gyroRotationReferenced = new float[9];
-    private float[] actualRotationReference = new float[9];
 
-
-
-    private float[] gyroPosition = new float[3];
-    private float[] fusedPosition = new float[3];
+    /**
+     * initState is used to access if statement only during first gyro sensor event
+     * magAccPosOk is used to access if statement only if there is a valid position obtained from acc and mag
+     */
     private boolean initState = true;
+    private boolean magAccPosOk = false;
 
+
+    /**
+     * filter coeff is used in complementary filter to weight gyro data or magAcc data on final result
+     */
     private float filter_coeff = 0.98f;
 
 
-    // test variable
-    private int posCountTest = 0;
-    private int rotMatTest = 0;
-    private boolean magAccPosOk = false;
+
+
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        //lock the screen in PORTRAIT mode
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
+
+        // Initialize gyroRotationMatrix to identity matrix in order to permits matrix multiplications
         getIdentityMatrix(gyroRotationMatrix);
 
 
@@ -132,7 +155,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mTextFusedZ = (TextView)findViewById(R.id.fusedZ);
 
 
-
+        //Initialize SensorManager and Sensor variable
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mSensorGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         mSensorAcc = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -185,6 +208,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     public void onSensorChanged(SensorEvent event){
 
+        //define sensor type variable and read from sensor copying data in the right variable using
+        // switch-case construct
+
         int sensorType = event.sensor.getType();
 
         switch (sensorType) {
@@ -200,6 +226,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 return;
         }
 
+        // calculate magAccRotationMatrix and magAccPosition, set magAccPosOk == true
+        // this position is magnetometer-Accelerometer part of final fused position
+
         boolean rotationOk = SensorManager.getRotationMatrix(magAccRotationMatrix, null, mAccelerometerData, mMagnetometerData);
 
         if(rotationOk) {
@@ -207,6 +236,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             magAccPosOk = true;
 
         }
+
+        //write in textview only if this class is used as stand alone APP
 
         mTextMagAccX.setText(getResources().getString(
                 R.string.value_format, magAccPosition[0]));
@@ -220,18 +251,21 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
 
-        //here only if sensor is gyro, this check is needed for timestamp consistency
+        // The following code is accessed only if sensor is gyro,
+        // Basically this check is needed for timestamp consistency in order to calculate
+        // dT only between gyro events
 
 
         if(sensorType == Sensor.TYPE_GYROSCOPE) {
 
+            //following code is taken and adapted from android documentation "Sensor event Gyroscope"
             if (timestamp != 0) {
 
                 final float dT = (event.timestamp - timestamp) * NANOTOSEC;
-                float a = 1.0f;
 
 
-                //following code is taken and adapted from android documentation "Sensor event Gyroscope"
+
+
 
 
                 //calculate time lapsed from consecutive sampling and convert from nanosecond to second
@@ -270,8 +304,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 SensorManager.getRotationMatrixFromVector(deltaRotationMatrix, deltaRotationVector);
 
-                rotMatTest++;
-                // //align gyro with inertial frame reference
+
+                // align gyro with inertial frame reference
 
 
 
@@ -317,6 +351,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             fusedPosition[0] = filter_coeff*gyroPosition[0] + (1.0f-filter_coeff)*magAccPosition[0];
             fusedPosition[1] = filter_coeff*gyroPosition[1] + (1.0f-filter_coeff)*magAccPosition[1];
             fusedPosition[2] = filter_coeff*gyroPosition[2] + (1.0f-filter_coeff)*magAccPosition[2];
+
 
             // Until here fused position is affected by drift generated by Gyro. To eliminate drift we shall continue to follow value provided by magAcc
             //to do so we update gyroRotationMatrix with new rotation matrix calculated by actual fused position. In this way the resultant gyroRotationMatrix
